@@ -27,3 +27,25 @@ ON CONFLICT (kb_id) DO NOTHING;
 -- Пока отметки нет (векторы получены неизвестной моделью), база при первом обращении
 -- переиндексируется текущей моделью (EmbeddingReindexer).
 ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS embedding_model TEXT;
+
+-- Заявки в службу качества: вопросы, на которые агент не ответил по регламентам
+-- (reason — причина кодом, см. QualityRequestService.Reason). Таблица общая для всех
+-- баз знаний, как и knowledge_bases. Ответ службы на заявку становится документом
+-- той базы знаний, где задали вопрос; answer_file — имя этого документа.
+CREATE TABLE IF NOT EXISTS quality_requests (
+    request_id   BIGSERIAL PRIMARY KEY,
+    kb_id        TEXT NOT NULL,
+    session_id   TEXT NOT NULL DEFAULT '',
+    question     TEXT NOT NULL,
+    reason       TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'open',
+    answer       TEXT,
+    answer_file  TEXT,
+    answered_by  TEXT,
+    answered_at  TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- История уточнений вопроса (уточнение агента → ответ пользователя), если перед заявкой агент
+-- уточнял вопрос: ответ зависел от условий, которых в вопросе не было. Пусто — уточнений не было.
+ALTER TABLE quality_requests ADD COLUMN IF NOT EXISTS dialogue TEXT;

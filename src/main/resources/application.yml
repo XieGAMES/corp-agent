@@ -45,10 +45,14 @@ spring:
 
 app:
   auth:
-    # Basic-аутентификация всех запросов (API и демо-страница)
-    username: ${APP_AUTH_USERNAME:admin}   # логин входа
-    password: ${APP_AUTH_PASSWORD:}        # пароль: env APP_AUTH_PASSWORD или строка APP_AUTH_PASSWORD=... в .env;
-                                           # без него приложение не стартует
+    # Basic-аутентификация всех запросов (API и страницы). Учётные записи две:
+    # пользователь (роль USER — чат с агентом) и служба качества (роль QUALITY — страница заявок).
+    username: ${APP_AUTH_USERNAME:admin}               # логин пользователя
+    password: ${APP_AUTH_PASSWORD:}                    # пароль: env APP_AUTH_PASSWORD или строка APP_AUTH_PASSWORD=... в .env;
+                                                       # без него приложение не стартует
+    quality-username: ${APP_QUALITY_USERNAME:quality}  # логин службы качества
+    quality-password: ${APP_QUALITY_PASSWORD:}         # пароль службы качества: env APP_QUALITY_PASSWORD или строка в .env;
+                                                       # без него приложение не стартует
   rag:
     splitter: semantic                   # semantic — по абзацам/предложениям; token — прежний TokenTextSplitter
     chunking:
@@ -58,6 +62,15 @@ app:
       min-chunk-chars: 30                # куски короче отбрасываются
     top-k: 10                            # сколько чанков подтягиваем в контекст (запас от «заглушения» лексически похожими чанками)
     similarity-threshold: 0.35           # порог для bge-m3 на рус. вопросах: релевантные пары дают 0.4-0.7
+    answer:
+      max-attempts: 2                    # попыток получить от модели ответ, подтверждённый дословными цитатами;
+                                         # не подтвердился — заявка в службу качества
+    clarification:
+      max-rounds: 3                      # уточняющих вопросов подряд, если ответ зависит от того, чего нет
+                                         # в вопросе; после лимита агент отвечает однозначно или сообщает,
+                                         # что не может, и создаёт заявку
+    quality:
+      contact: ${QUALITY_SERVICE_CONTACT:}   # необязательно: контакт службы качества — попадёт в ответ «обратитесь …»
 
 logging:
   level:

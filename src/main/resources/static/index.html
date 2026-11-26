@@ -5,104 +5,232 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ИИ-агент по корпоративным документам</title>
     <style>
+        /* Палитра «бумага и чернила»: тёплые малонасыщенные тона. Цвета страницы меняются здесь, в одном месте */
+        :root {
+            --paper: #f2efe8;          /* фон страницы */
+            --paper-deep: #e9e4d8;     /* шапка */
+            --paper-light: #fbfaf6;    /* карточки, поля */
+            --line: #d8d2c4;           /* рамки и линии */
+            --line-strong: #c7c0b1;    /* рамка потемнее: чипы, наведение */
+            --line-soft: #e7e2d6;      /* разделители внутри карточек */
+            --ink: #2a2722;            /* основной текст */
+            --ink-soft: #5d584f;       /* приглушённый текст, иконки */
+            --ink-faint: #8b857a;      /* самое тихое: время, индикатор набора */
+            --accent: #35322c;         /* залитые кнопки, сообщения пользователя */
+            --accent-hover: #46423a;
+            --paper-on-ink: #f5f2ea;   /* текст на чернильном */
+            --tint: #efe9dc;           /* лёгкая заливка: плашки, чипы при наведении */
+            --danger: #a4473a;         /* ошибки и удаление — кирпичный */
+            --danger-line: #d9bdb6;
+            --warn: #8a641c;           /* заявка в службу качества */
+        }
         * { box-sizing: border-box; }
         body {
             font-family: "Segoe UI", Arial, sans-serif;
-            margin: 0; background: #f4f6f9; color: #24292f;
+            margin: 0; background: var(--paper); color: var(--ink);
             height: 100vh; display: flex; flex-direction: column;
         }
+        /* Шапка: слева бренд, справа три группы управления; кнопка, ссылка и выбор базы — «таблетки» одного стиля */
         header {
-            background: #1f6feb; color: #fff; padding: 14px 24px;
-            display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+            background: var(--paper-deep); color: var(--ink); padding: 10px 20px; position: relative;
+            border-bottom: 1px solid var(--line);
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px 16px;
+            flex-shrink: 0;
         }
-        header h1 { font-size: 18px; margin: 0; }
-        header small { opacity: .85; margin-left: 12px; }
-        header button {
-            background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.4);
-            border-radius: 8px; padding: 8px 16px; font: inherit; cursor: pointer;
+        .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .brand .logo {
+            flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px;
+            background: var(--ink); color: var(--paper-on-ink); display: grid; place-items: center;
         }
-        header button:hover { background: rgba(255,255,255,.28); }
-        header select {
-            padding: 8px 10px; border-radius: 8px; border: none; font: inherit;
-            max-width: 260px; background: #fff;
+        header h1 { font-size: 17px; font-weight: 600; margin: 0; color: var(--ink); white-space: nowrap; }
+        header small { display: block; font-size: 13px; font-weight: 400; color: var(--ink-soft); margin: 2px 0 0; }
+        .hgroup { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+        .hsep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; }
+        .hbtn, .hlink {
+            display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px;
+            background: transparent; color: var(--ink); border: 1px solid var(--line);
+            border-radius: 8px; font: inherit; font-size: 14px; text-decoration: none;
+            white-space: nowrap; cursor: pointer; transition: background .12s, border-color .12s;
+        }
+        .hbtn:hover, .hlink:hover { background: rgba(42,39,34,.06); border-color: var(--line-strong); }
+        .hbtn:active { transform: translateY(1px); }
+        .hbtn[hidden] { display: none; }
+        .hbtn:focus-visible, .hlink:focus-visible { outline: 2px solid var(--ink-soft); outline-offset: 2px; }
+        .hbtn.primary { background: var(--accent); color: var(--paper-on-ink); border-color: var(--accent); font-weight: 600; }
+        .hbtn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+        .hbtn.icon { width: 36px; padding: 0; justify-content: center; }
+        .hbtn.danger { color: var(--danger); }
+        .hbtn.danger:hover { background: rgba(164,71,58,.1); border-color: var(--danger-line); }
+        /* контурные иконки шапки: спрайт с символами — в начале body, цвет наследуется */
+        .i { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        /* выбор базы знаний: светлая «таблетка» с иконкой и своей стрелкой */
+        .picker {
+            display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px 0 12px;
+            background: var(--paper-light); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+        }
+        .picker .i { color: var(--ink-soft); }
+        .picker .i.chevron { width: 16px; height: 16px; color: var(--ink-faint); }
+        .picker select {
+            appearance: none; -webkit-appearance: none; border: none; outline: none; background: transparent;
+            font: inherit; font-size: 14px; color: inherit; max-width: 240px; padding: 0; cursor: pointer;
+            text-overflow: ellipsis;
+        }
+        .picker select:focus-visible { outline: 2px solid var(--ink-soft); outline-offset: 2px; border-radius: 4px; }
+        @media (max-width: 820px) {
+            header h1 { white-space: normal; }
+            .hlink span { display: none; }
+            .hlink { width: 36px; padding: 0; justify-content: center; }
+            .hsep { display: none; }
         }
         main { flex: 1; display: flex; flex-direction: column; max-width: 900px; width: 100%; margin: 0 auto; padding: 14px 16px; overflow: hidden; }
         details {
-            background: #fff; border: 1px solid #d0d7de; border-radius: 10px;
+            background: var(--paper-light); border: 1px solid var(--line); border-radius: 10px;
             padding: 10px 16px; margin-bottom: 12px; flex-shrink: 0;
         }
-        summary { cursor: pointer; font-weight: 600; color: #1f6feb; }
+        summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+        summary:hover { color: var(--ink-soft); }
         .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
         .row input[type=text], select {
-            padding: 8px; border: 1px solid #d0d7de; border-radius: 6px; font: inherit;
+            padding: 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit;
+            background: var(--paper-light); color: var(--ink);
         }
         select { padding: 8px; }
         button.primary {
-            background: #1f6feb; color: #fff; border: none; border-radius: 8px;
-            padding: 8px 20px; font: inherit; cursor: pointer;
+            background: var(--accent); color: var(--paper-on-ink); border: none; border-radius: 8px;
+            padding: 8px 20px; font: inherit; cursor: pointer; transition: background .12s;
         }
-        button.primary:hover { background: #1a5ad6; }
-        button.primary:disabled { background: #9db8e8; cursor: wait; }
+        button.primary:hover { background: var(--accent-hover); }
+        button.primary:disabled { background: #aaa497; cursor: wait; }
         button.danger {
-            background: #cf222e; color: #fff; border: none; border-radius: 6px;
+            background: transparent; color: var(--danger); border: 1px solid var(--danger-line); border-radius: 6px;
             padding: 4px 12px; font-size: 13px; cursor: pointer;
         }
+        button.danger:hover { background: rgba(164,71,58,.08); }
         table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
-        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eaeef2; }
-        th { background: #f6f8fa; }
-        .muted { color: #57606a; font-size: 13px; }
+        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line-soft); }
+        th { background: var(--tint); }
+        .muted { color: var(--ink-soft); font-size: 13px; }
 
         .chat-card {
             flex: 1; display: flex; flex-direction: column; min-height: 0;
-            background: #fff; border: 1px solid #d0d7de; border-radius: 10px; overflow: hidden;
+            background: var(--paper-light); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
         }
         #chat { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
         .msg { max-width: 78%; padding: 10px 14px; border-radius: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-        .msg.user { align-self: flex-end; background: #1f6feb; color: #fff; border-bottom-right-radius: 4px; }
-        .msg.bot { align-self: flex-start; background: #f6f8fa; border: 1px solid #e4e8ec; border-bottom-left-radius: 4px; }
-        .msg.bot.notfound { border-left: 4px solid #cf222e; }
+        .msg.user { align-self: flex-end; background: var(--accent); color: var(--paper-on-ink); border-bottom-right-radius: 4px; }
+        .msg.bot { align-self: flex-start; background: var(--paper); border: 1px solid var(--line-soft); border-bottom-left-radius: 4px; }
+        .msg.bot.notfound { border-left: 4px solid var(--danger); }
+        .msg.bot.escalated { border-left: 4px solid var(--warn); }
+        .notice { margin-top: 8px; font-size: 12px; color: var(--warn); }
+        .quotes { margin-top: 8px; font-size: 12px; border-left: 3px solid var(--line); padding: 4px 10px; color: var(--ink-soft); }
+        .quotes .q { margin-top: 4px; }
+        .quotes .q span { opacity: .65; }
         .msg .src { margin-top: 8px; font-size: 12px; }
         .badge {
-            display: inline-block; background: #ddf4ff; color: #0a3069;
+            display: inline-block; background: var(--tint); color: var(--ink-soft);
             border-radius: 12px; padding: 2px 10px; font-size: 12px; margin: 2px 2px 0 0;
         }
         .meta { font-size: 11px; opacity: .65; margin-top: 4px; }
-        .typing { align-self: flex-start; background: #f6f8fa; border: 1px solid #e4e8ec; border-radius: 12px; padding: 12px 16px; display: none; }
+        .typing { align-self: flex-start; background: var(--paper); border: 1px solid var(--line-soft); border-radius: 12px; padding: 12px 16px; display: none; }
         .typing span {
             display: inline-block; width: 7px; height: 7px; margin-right: 4px;
-            background: #8ca6c0; border-radius: 50%; animation: bounce 1.2s infinite;
+            background: var(--ink-faint); border-radius: 50%; animation: bounce 1.2s infinite;
         }
         .typing span:nth-child(2) { animation-delay: .2s; }
         .typing span:nth-child(3) { animation-delay: .4s; }
         @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
         .hint-chips { align-self: flex-start; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
         .chip {
-            background: #fff; border: 1px solid #1f6feb; color: #1f6feb;
+            background: var(--paper-light); border: 1px solid var(--line-strong); color: var(--ink);
             border-radius: 14px; padding: 5px 12px; font-size: 13px; cursor: pointer;
         }
-        .chip:hover { background: #ddf4ff; }
+        .chip:hover { background: var(--tint); }
+
+        /* Уточняющий вопрос агента: тёмная полоса и варианты ответа теми же чипами */
+        .msg.bot.clarify { border-left: 4px solid var(--ink-soft); }
+        .msg.bot.clarify .notice { color: var(--ink-soft); }
+        .options { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+        .options .chip { padding: 4px 10px; }
+
+        /* Значок уведомлений (ответы службы качества на заявки этого диалога) и выпадающая под шапкой панель */
+        #bell { position: relative; }
+        #bell .count {
+            position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px;
+            box-sizing: content-box; background: var(--danger); color: #fff; border: 2px solid var(--paper-deep);
+            border-radius: 11px; font-size: 11px; line-height: 18px; text-align: center; font-weight: 600;
+        }
+        #notifications {
+            position: absolute; right: 16px; top: calc(100% + 8px); z-index: 10; width: min(440px, calc(100vw - 32px));
+            max-height: calc(100vh - 140px); overflow-y: auto;
+            background: var(--paper-light); color: var(--ink); border: 1px solid var(--line); border-radius: 10px;
+            box-shadow: 0 10px 28px rgba(58,50,38,.18); padding: 12px 16px;
+        }
+        #notifications h2 { font-size: 15px; margin: 0 0 6px; }
+        .notif { border-top: 1px solid var(--line-soft); padding: 10px 0; }
+        .notif .question { font-weight: 600; margin: 4px 0; white-space: pre-wrap; }
+        .notif .answer {
+            white-space: pre-wrap; background: var(--paper); border: 1px solid var(--line-soft);
+            border-radius: 8px; padding: 8px 12px; margin: 6px 0;
+        }
+        .notif button.primary { padding: 4px 12px; font-size: 13px; }
 
         .input-row {
-            display: flex; gap: 10px; padding: 12px; border-top: 1px solid #e4e8ec;
-            background: #fbfcfd; flex-shrink: 0;
+            display: flex; gap: 10px; padding: 12px; border-top: 1px solid var(--line-soft);
+            background: var(--paper-light); flex-shrink: 0;
         }
         #input {
             flex: 1; min-height: 44px; max-height: 120px; padding: 11px 14px; font: inherit;
-            border: 1px solid #d0d7de; border-radius: 10px; resize: none; outline: none;
+            border: 1px solid var(--line); border-radius: 10px; resize: none; outline: none;
+            background: var(--paper); color: var(--ink);
         }
-        #input:focus { border-color: #1f6feb; }
+        #input:focus { border-color: var(--ink-faint); }
         #sendBtn { align-self: flex-end; height: 44px; min-width: 110px; }
     </style>
 </head>
 <body>
+    <!-- Спрайт контурных иконок: <use href="#i-…"/>, цвет и толщина заданы в правиле .i -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/></symbol>
+        <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+        <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/></symbol>
+        <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 8v6M9 11h6"/></symbol>
+        <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+        <symbol id="i-list" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 14l2 2 4-4"/></symbol>
+        <symbol id="i-swap" viewBox="0 0 24 24"><path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></symbol>
+        <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></symbol>
+    </svg>
 <header>
-        <h1>ИИ-агент по корпоративным документам <small>Spring AI · pgvector · DeepSeek</small></h1>
-        <div style="display:flex; gap:8px; align-items:center;">
-            <select id="kbSelect" onchange="switchKb(this.value)" title="Активная база знаний"></select>
-            <button onclick="createKb()" title="Создать базу знаний">+ База</button>
-            <button onclick="deleteKb()" title="Удалить текущую базу знаний">✕ База</button>
-            <button onclick="clearChat()">Новый чат</button>
-        </div>
+    <div class="brand">
+        <span class="logo"><svg class="i" aria-hidden="true"><use href="#i-spark"/></svg></span>
+        <h1>ИИ-агент по корпоративным документам</h1>
+    </div>
+    <!-- группа 1: база знаний; группа 2: действия в чате; группа 3: переходы -->
+    <div class="hgroup">
+        <label class="picker" title="База знаний: поиск идёт только по её документам">
+            <svg class="i" aria-hidden="true"><use href="#i-db"/></svg>
+            <select id="kbSelect" onchange="switchKb(this.value)" aria-label="База знаний"></select>
+            <svg class="i chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+        </label>
+        <button class="hbtn icon" onclick="createKb()" title="Создать базу знаний" aria-label="Создать базу знаний">
+            <svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button>
+        <button class="hbtn icon danger" id="deleteKbBtn" onclick="deleteKb()" hidden
+                title="Удалить текущую базу знаний вместе с её документами" aria-label="Удалить текущую базу знаний">
+            <svg class="i" aria-hidden="true"><use href="#i-trash"/></svg></button>
+        <span class="hsep" aria-hidden="true"></span>
+        <button class="hbtn primary" onclick="clearChat()" title="Начать новый диалог">
+            <svg class="i" aria-hidden="true"><use href="#i-chat"/></svg>Новый чат</button>
+        <button class="hbtn icon" id="bell" onclick="toggleNotifications()"
+                title="Уведомления: ответы службы качества на ваши заявки" aria-label="Уведомления">
+            <svg class="i" aria-hidden="true"><use href="#i-bell"/></svg><span class="count" id="bellCount" hidden></span></button>
+        <span class="hsep" aria-hidden="true"></span>
+        <a class="hlink" href="/quality.html" title="Нужна учётная запись службы качества">
+            <svg class="i" aria-hidden="true"><use href="#i-list"/></svg><span>Заявки службы качества</span></a>
+        <a class="hlink" href="/logout" title="Браузер спросит логин и пароль заново">
+            <svg class="i" aria-hidden="true"><use href="#i-swap"/></svg><span>Сменить пользователя</span></a>
+    </div>
+    <div id="notifications" hidden></div>
 </header>
 <main>
     <details>
@@ -145,6 +273,9 @@
         localStorage.setItem('ragSessionId', sessionId);
     }
     let kbId = localStorage.getItem('ragKbId') || 'default';
+    let kbTitles = {};          // kbId → название базы знаний — для уведомлений
+    let notifications = [];     // заявки этой сессии из последней загрузки
+    const SEEN_KEY = 'ragSeenRequests';   // номера отвеченных заявок, чей ответ уже показан в уведомлениях
 
     function esc(s) {
         return String(s ?? '').replace(/[&<>"']/g, c =>
@@ -153,11 +284,34 @@
 
     function addMsg(role, text, sources, extra) {
         const div = document.createElement('div');
-        div.className = 'msg ' + (role === 'user' ? 'user' : 'bot' + (extra && extra.found === false ? ' notfound' : ''));
+        // без ответа: синяя полоса — уточняющий вопрос, янтарная — создана заявка в службу качества, красная — ошибка
+        const mark = extra && extra.escalated ? ' escalated'
+                : extra && extra.clarification ? ' clarify'
+                : extra && extra.found === false ? ' notfound' : '';
+        div.className = 'msg ' + (role === 'user' ? 'user' : 'bot' + mark);
         let html = esc(text);
+        if (extra && extra.escalated) {
+            html += `<div class="notice">📝 Заявка №${esc(extra.requestId)} создана: служба качества увидит её на своей странице, а её ответ попадёт в базу знаний.</div>`;
+        }
+        if (extra && extra.clarification) {
+            // уточняющий вопрос: варианты — те же чипы-подсказки; текст чипа читается из textContent,
+            // поэтому esc() достаточно и для варианта с апострофом
+            const options = extra.clarification.options || [];
+            html += `<div class="notice">${options.length ? 'Выберите вариант или напишите свой ответ в чате.' : 'Напишите ответ в чате.'}</div>`;
+            if (options.length) {
+                html += '<div class="options">' + options.map(o =>
+                    `<button class="chip" onclick="useHint(this)">${esc(o)}</button>`).join('') + '</div>';
+            }
+        }
         if (sources && sources.length) {
             html += '<div class="src">Источники: ' + sources.map(s =>
                 `<span class="badge">${esc(s.title || s.file)}${s.similarity != null ? ' · ' + Math.round(s.similarity * 100) + '%' : ''}</span>`
+            ).join('') + '</div>';
+        }
+        if (extra && extra.quotes && extra.quotes.length) {
+            // дословные фрагменты регламента, которыми подтверждён ответ
+            html += '<div class="quotes">' + extra.quotes.map(q =>
+                `<div class="q">«${esc(q.text)}» <span>— ${esc(q.title || q.file)}</span></div>`
             ).join('') + '</div>';
         }
         if (extra && extra.elapsed != null) {
@@ -185,10 +339,84 @@
         send();
     }
 
+    function seenRequests() {
+        try {
+            return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'));
+        } catch (e) {
+            return new Set();
+        }
+    }
+
+    /** Заявки этой сессии: по ним пользователь узнаёт об ответах службы качества. */
+    async function loadNotifications() {
+        try {
+            const r = await fetch('/api/chat/requests?sessionId=' + encodeURIComponent(sessionId));
+            if (!r.ok) return;
+            notifications = await r.json();
+        } catch (e) {
+            return;     // уведомления — необязательная деталь: ошибка не мешает чату
+        }
+        renderNotifications();
+    }
+
+    function renderNotifications() {
+        const seen = seenRequests();
+        const fresh = notifications.filter(n => n.status === 'answered' && !seen.has(n.requestId)).length;
+        $('bellCount').textContent = fresh > 9 ? '9+' : String(fresh);
+        $('bellCount').hidden = fresh === 0;
+        const panel = $('notifications');
+        if (panel.hidden) return;
+        panel.innerHTML = '<h2>Уведомления</h2>' + (notifications.length
+            ? notifications.map(notification).join('')
+            : '<p class="muted">Заявок из этого диалога ещё не было. Они появятся здесь, если агент не найдёт ответ в документах.</p>');
+    }
+
+    /** Карточка заявки: ожидает ответа службы качества или уже отвечена. */
+    function notification(n) {
+        const head = `<div class="muted">Заявка №${esc(n.requestId)} · ${esc(n.createdAt)} · база знаний «${esc(kbTitles[n.kbId] || n.kbId)}»</div>
+            <p class="question">${esc(n.question)}</p>`;
+        if (n.status !== 'answered') {
+            return `<div class="notif">${head}<div class="muted">⏳ Ожидает ответа службы качества.</div></div>`;
+        }
+        // в обработчик — только числовой номер заявки, остальное экранируется
+        return `<div class="notif">${head}
+            <div class="muted">✅ Ответ службы качества${n.answeredAt ? ' · ' + esc(n.answeredAt) : ''}:</div>
+            <div class="answer">${esc(n.answer)}</div>
+            <div class="muted">Ответ сохранён в базе знаний документом «${esc(n.answerFile)}» — теперь агент ответит на этот вопрос сам.</div>
+            <button class="primary" onclick="askAgain(${Number(n.requestId)})">Спросить снова</button>
+        </div>`;
+    }
+
+    function toggleNotifications() {
+        const panel = $('notifications');
+        panel.hidden = !panel.hidden;
+        if (panel.hidden) return;
+        // открытые ответы считаются прочитанными
+        const seen = seenRequests();
+        notifications.filter(n => n.status === 'answered').forEach(n => seen.add(n.requestId));
+        localStorage.setItem(SEEN_KEY, JSON.stringify([...seen].slice(-200)));
+        renderNotifications();
+    }
+
+    /** Задаёт вопрос из уведомления заново — теперь агент отвечает по документу службы качества. */
+    function askAgain(requestId) {
+        const n = notifications.find(x => x.requestId === requestId);
+        if (!n) return;
+        $('notifications').hidden = true;
+        if (n.kbId !== kbId) {
+            $('kbSelect').value = n.kbId;
+            switchKb(n.kbId);
+        }
+        $('input').value = n.question;
+        send();
+    }
+
     async function send() {
         const q = $('input').value.trim();
         if (!q) return;
         $('input').value = '';
+        // варианты предыдущего уточнения больше неактуальны: на него получен ответ
+        document.querySelectorAll('#chat .options').forEach(el => el.remove());
         addMsg('user', q);
         $('sendBtn').disabled = true;
         $('typing').style.display = 'block';
@@ -202,7 +430,13 @@
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const data = await r.json();
             $('typing').style.display = 'none';
-            addMsg('bot', data.answer, data.sources, {found: data.found, elapsed: Math.round((Date.now() - started) / 1000)});
+            addMsg('bot', data.answer, data.sources, {
+                found: data.found, elapsed: Math.round((Date.now() - started) / 1000),
+                escalated: data.escalated, requestId: data.requestId, quotes: data.quotes,
+                clarification: data.clarification
+            });
+            // заявка могла появиться (отказ агента) или исчезнуть (агент сам ответил после уточнения)
+            if (!data.clarification) loadNotifications();
         } catch (e) {
             $('typing').style.display = 'none';
             addMsg('bot', 'Ошибка запроса: ' + e.message, null, {found: false});
@@ -274,19 +508,26 @@
     async function loadKbs() {
         const r = await fetch('/api/kb');
         const kbs = await r.json();
+        kbTitles = Object.fromEntries(kbs.map(k => [k.kbId, k.title]));
         const sel = $('kbSelect');
-        sel.innerHTML = kbs.map(k =>
-            `<option value="${esc(k.kbId)}">${esc(k.title)}${k.kbId === 'default' ? ' ★' : ''}</option>`).join('');
+        sel.innerHTML = kbs.map(k => `<option value="${esc(k.kbId)}">${esc(k.title)}</option>`).join('');
         if (![...sel.options].some(o => o.value === kbId)) kbId = 'default';
         sel.value = kbId;
         localStorage.setItem('ragKbId', kbId);
+        syncBaseControls();
+    }
+
+    /** Кнопка удаления базы видна только у дополнительной базы: основную удалить нельзя. */
+    function syncBaseControls() {
+        $('deleteKbBtn').hidden = kbId === 'default';
     }
 
     function switchKb(v) {
         kbId = v;
         localStorage.setItem('ragKbId', v);
+        syncBaseControls();
         $('chat').innerHTML = '';
-        const name = $('kbSelect').selectedOptions[0].text.replace(' ★', '');
+        const name = $('kbSelect').selectedOptions[0].text;
         addMsg('bot', `Переключено на базу знаний «${esc(name)}». Поиск теперь идёт только по её документам — она изолирована от других баз.`);
         loadDocs();
         $('input').focus();
@@ -313,7 +554,7 @@
 
     async function deleteKb() {
         if (kbId === 'default') return alert('Основную базу знаний удалить нельзя');
-        const name = $('kbSelect').selectedOptions[0].text.replace(' ★', '');
+        const name = $('kbSelect').selectedOptions[0].text;
         if (!confirm(`Удалить базу знаний «${name}» вместе со всеми её документами?`)) return;
         const r = await fetch('/api/kb?kbId=' + encodeURIComponent(kbId), {method: 'DELETE'});
         if (!r.ok) return alert('Ошибка удаления: ' + await r.text());
@@ -343,10 +584,23 @@
 
     (async () => {
         await loadKbs();
-        addMsg('bot', 'Здравствуйте! Я помогу найти ответ в корпоративных документах компании: регламентах, приказах и инструкциях. База знаний выбрана в шапке — переключайтесь между ними, они изолированы. Спросите, например:');
+        // Сюда возвращается браузер обычного пользователя, открывшего страницу заявок (SecurityConfig)
+        if (new URLSearchParams(location.search).get('forbidden') === 'quality') {
+            history.replaceState(null, '', location.pathname);
+            addMsg('bot', 'Страница заявок доступна только службе качества. Нажмите «Сменить пользователя» в шапке и войдите под её учётной записью.', null, {found: false});
+        }
+        addMsg('bot', 'Здравствуйте! Я помогу найти ответ в корпоративных документах компании: регламентах, приказах и инструкциях. Отвечаю только по ним: если ответа в документах нет, создам заявку в службу качества, а её ответ придёт в уведомления 🔔 в шапке; если вопрос допускает разные ответы — уточню его. База знаний выбрана в шапке — переключайтесь между ними, они изолированы. Спросите, например:');
         showHintChips();
         await loadDocs();
+        // уведомления обновляются, пока вкладка на виду, — как список заявок на странице службы качества
+        loadNotifications();
+        setInterval(() => { if (!document.hidden) loadNotifications(); }, 15000);
     })();
+    // клик мимо панели уведомлений закрывает её
+    document.addEventListener('click', e => {
+        const panel = $('notifications');
+        if (!panel.hidden && !panel.contains(e.target) && !$('bell').contains(e.target)) panel.hidden = true;
+    });
     $('input').focus();
 </script>
 </body>

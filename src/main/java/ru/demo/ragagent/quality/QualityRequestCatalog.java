@@ -17,7 +17,8 @@ public class QualityRequestCatalog {
     private static final String SELECT = """
             SELECT request_id, kb_id, session_id, question, reason, status, answer, answer_file, answered_by,
                    to_char(answered_at, 'YYYY-MM-DD HH24:MI') AS answered_at,
-                   to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+                   to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at,
+                   dialogue
               FROM quality_requests
             """;
 
@@ -34,13 +35,13 @@ public class QualityRequestCatalog {
         this.jdbc = jdbc;
     }
 
-    /** Создаёт заявку и возвращает её номер. */
-    public long create(String kbId, String sessionId, String question, String reason) {
+    /** Создаёт заявку и возвращает её номер; dialogue — история уточнений вопроса (может быть пустой). */
+    public long create(String kbId, String sessionId, String question, String reason, String dialogue) {
         Long id = jdbc.queryForObject("""
-                INSERT INTO quality_requests (kb_id, session_id, question, reason)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO quality_requests (kb_id, session_id, question, reason, dialogue)
+                VALUES (?, ?, ?, ?, ?)
                 RETURNING request_id
-                """, Long.class, kbId, sessionId == null ? "" : sessionId, question, reason);
+                """, Long.class, kbId, sessionId == null ? "" : sessionId, question, reason, dialogue);
         if (id == null) {
             throw new IllegalStateException("База не вернула номер созданной заявки");
         }
@@ -49,6 +50,12 @@ public class QualityRequestCatalog {
 
     public List<QualityRequestService.RequestInfo> list(boolean openOnly) {
         return jdbc.query(openOnly ? SELECT_OPEN : SELECT_ALL, QualityRequestCatalog::map);
+    }
+
+    /** Заявки одной сессии чата, новые сверху. */
+    public List<QualityRequestService.RequestInfo> listBySession(String sessionId) {
+        return jdbc.query(SELECT + " WHERE session_id = ? ORDER BY request_id DESC",
+                QualityRequestCatalog::map, sessionId);
     }
 
     /** Заявка по номеру; null — заявки нет. */
@@ -72,12 +79,24 @@ public class QualityRequestCatalog {
         return jdbc.update("DELETE FROM quality_requests WHERE request_id = ?", requestId);
     }
 
+    /** Дополняет историю уточнений заявки, пока она открыта; 0 — заявка уже отвечена или не существует. */
+    public int updateDialogue(long requestId, String dialogue) {
+        return jdbc.update(
+                "UPDATE quality_requests SET dialogue = ? WHERE request_id = ? AND status = 'open'", dialogue, requestId);
+    }
+
+    /** Удаляет только ещё открытую заявку; 0 — заявка отвечена или не найдена. */
+    public int deleteOpen(long requestId) {
+        return jdbc.update(
+                "DELETE FROM quality_requests WHERE request_id = ? AND status = 'open'", requestId);
+    }
+
     private static QualityRequestService.RequestInfo map(ResultSet rs, int row) throws SQLException {
         return new QualityRequestService.RequestInfo(
                 rs.getLong("request_id"), rs.getString("kb_id"), rs.getString("session_id"),
                 rs.getString("question"), rs.getString("reason"),
                 QualityRequestService.Reason.titleOf(rs.getString("reason")), rs.getString("status"),
                 rs.getString("answer"), rs.getString("answer_file"), rs.getString("answered_by"),
-                rs.getString("answered_at"), rs.getString("created_at"));
+                rs.getString("answered_at"), rs.getString("created_at"), rs.getString("dialogue"));
     }
 }

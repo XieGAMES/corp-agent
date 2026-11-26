@@ -109,7 +109,13 @@ public final class QuoteVerifier {
             if (at < 0) {
                 continue;
             }
-            int from = hay.origin()[at];
+            // Игла начинается пробелом-границей слова, и его начало указывает на первый разделитель
+            // перед словом («. » после номера пункта, «: » и т. п.) — цитата начинается с первой буквы.
+            int first = 0;
+            while (needle.text().charAt(first) == ' ') {
+                first++;
+            }
+            int from = hay.origin()[at + first];
             int to = hay.origin()[at + needle.text().length() - 1];
             return new Span(chunks.get(i).getText().substring(from, to).strip(), chunks.get(i));
         }

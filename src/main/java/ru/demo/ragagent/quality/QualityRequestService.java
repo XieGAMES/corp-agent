@@ -10,6 +10,8 @@ import ru.demo.ragagent.kb.KnowledgeBaseService;
 
 /**
  * Заявки в службу качества: вопросы, на которые агент не смог ответить по регламентам.
+ * Если агент перед этим уточнял вопрос, история уточнений сохраняется в заявке — службе
+ * качества видно, что именно оказалось неоднозначным.
  *
  * Агент только создаёт заявку (см. QaService). Дальше служба качества открывает её
  * на своей странице и отвечает. Ответ не остаётся только в заявке: вопрос вместе
@@ -26,7 +28,9 @@ public class QualityRequestService {
         /** Фрагменты нашлись, но ответа в них нет. */
         NOT_IN_DOCUMENTS("В найденных фрагментах регламентов нет ответа"),
         /** Модель ответила, но её ответ не подтверждён дословными цитатами — считается недостоверным. */
-        UNVERIFIED("Ответ не подтверждён дословными цитатами из регламента");
+        UNVERIFIED("Ответ не подтверждён дословными цитатами из регламента"),
+        /** Агент уточнял вопрос, но однозначный ответ не получился: в регламентах несколько вариантов или нет нужных сведений. */
+        AMBIGUOUS("После уточнения не удалось дать однозначный ответ");
 
         private final String title;
 
@@ -50,10 +54,13 @@ public class QualityRequestService {
         }
     }
 
-    /** Заявка как её видит служба качества. */
+    /**
+     * Заявка как её видит служба качества; dialogue — история уточнений вопроса
+     * (уточнение агента → ответ пользователя), если агент уточнял вопрос перед заявкой.
+     */
     public record RequestInfo(long requestId, String kbId, String sessionId, String question, String reason,
                               String reasonTitle, String status, String answer, String answerFile,
-                              String answeredBy, String answeredAt, String createdAt) {
+                              String answeredBy, String answeredAt, String createdAt, String dialogue) {
     }
 
     /** Итог ответа на заявку: каким документом ответ сохранён в базе знаний. */
@@ -78,17 +85,39 @@ public class QualityRequestService {
         this.pipeline = pipeline;
     }
 
-    /** Создаёт заявку на вопрос, оставшийся без ответа, и возвращает её номер. */
-    public long create(String kbId, String sessionId, String question, Reason reason) {
+    /** Создаёт заявку на вопрос, оставшийся без ответа, и возвращает её номер; dialogue — история уточнений, если они были. */
+    public long create(String kbId, String sessionId, String question, Reason reason, String dialogue) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("Вопрос заявки не может быть пустым");
         }
         String kb = (kbId == null || kbId.isBlank()) ? KnowledgeBaseService.DEFAULT_KB : kbId;
-        return catalog.create(kb, sessionId, question, reason.name());
+        return catalog.create(kb, sessionId, question, reason.name(), dialogue);
     }
 
     public List<RequestInfo> list(boolean openOnly) {
         return catalog.list(openOnly);
+    }
+
+    /** Заявки одной сессии чата, новые сверху: пользователь узнаёт из них об ответах службы качества. */
+    public List<RequestInfo> listBySession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new IllegalArgumentException("Не указан идентификатор сессии");
+        }
+        return catalog.listBySession(sessionId);
+    }
+
+    /**
+     * Дополняет открытую заявку историей уточнений — агент снова не смог ответить на тот же вопрос.
+     *
+     * @return false — заявка уже отвечена или удалена, нужна новая
+     */
+    public boolean addDialogue(long requestId, String dialogue) {
+        return catalog.updateDialogue(requestId, dialogue) > 0;
+    }
+
+    /** Убирает заявку, пока она открыта: после уточнения агент сам ответил на вопрос, и заявка не нужна. */
+    public void cancelOpen(long requestId) {
+        catalog.deleteOpen(requestId);
     }
 
     /**
@@ -114,7 +143,10 @@ public class QualityRequestService {
         // Чанкеры и эмбеддинги — те же, что у загруженного файла; имя документа зависит
         // только от номера заявки, поэтому повторная загрузка заменила бы старую версию
         String fileName = "Ответ_службы_качества_N" + requestId + ".txt";
-        String document = "Вопрос: %s%n%nОтвет: %s".formatted(request.question(), text);
+        // Уточнения — тоже в документ: по уточнённому варианту вопроса он находится наравне с исходным
+        String clarified = request.dialogue() == null || request.dialogue().isBlank()
+                ? "" : "%n%s".formatted(request.dialogue().strip());
+        String document = "Вопрос: %s%s%n%nОтвет: %s".formatted(request.question(), clarified, text);
         IngestionPipeline.IngestResult result =
                 pipeline.ingest(SourceRef.text(document, fileName), request.kbId(), DOC_TYPE, titleOf(request.question()));
 
