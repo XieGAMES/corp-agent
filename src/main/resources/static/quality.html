@@ -268,6 +268,15 @@
         if (row) openRequest(Number(row.dataset.id));
     });
 
+    // «Сменить пользователя»: как в index.html — запрос уходит в фоне, страница не покидается;
+    // после верного пароля она перезагружается уже под новой учётной записью
+    document.querySelectorAll('a[href="/logout"]').forEach(a => a.addEventListener('click', async e => {
+        e.preventDefault();
+        const k = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const r = await fetch('/logout?k=' + k, {headers: {'X-Requested-With': 'fetch'}});
+        if (r.ok) location.reload();
+    }));
+
     (async () => {
         try {
             const kbs = await (await fetch('/api/kb')).json();

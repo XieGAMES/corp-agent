@@ -601,6 +601,16 @@
         const panel = $('notifications');
         if (!panel.hidden && !panel.contains(e.target) && !$('bell').contains(e.target)) panel.hidden = true;
     });
+    // «Сменить пользователя»: запрос уходит в фоне, со страницы никуда не уносит. Первый ответ 401
+    // заставляет браузер забыть сохранённый пароль и показать окно ввода; повтор с верным паролем
+    // сервер принимает (ключ k отличает повтор от первого запроса) — страница перезагружается уже
+    // под новой учётной записью. Отмена в окне ввода ничего не меняет.
+    document.querySelectorAll('a[href="/logout"]').forEach(a => a.addEventListener('click', async e => {
+        e.preventDefault();
+        const k = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const r = await fetch('/logout?k=' + k, {headers: {'X-Requested-With': 'fetch'}});
+        if (r.ok) location.reload();
+    }));
     $('input').focus();
 </script>
 </body>
