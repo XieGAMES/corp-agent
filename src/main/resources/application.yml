@@ -1,0 +1,64 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: rag-agent
+
+  config:
+    # Токен и другие локальные настройки читаются из файла .env в каталоге проекта
+    # (в git он не попадает). Файл необязателен.
+    import: optional:file:.env[.properties]
+
+  datasource:
+    # Отдельный инстанс PostgreSQL для RAG-агента: служба pg-rag, порт 5433
+    url: jdbc:postgresql://localhost:5433/rag_docs
+    username: postgres
+    password: ${DB_PASSWORD:postgres}   # пароль postgres (или переменная окружения DB_PASSWORD)
+
+  sql:
+    init:
+      mode: always                       # создаёт каталог documents (schema.sql, IF NOT EXISTS)
+
+  ai:
+    openai:
+      base-url: https://plusvibeapi.ru    # без /v1: Spring AI сам добавляет /v1/chat/completions и /v1/embeddings
+      api-key: ${AI_API_KEY:}             # токен: переменная окружения AI_API_KEY или строка AI_API_KEY=... в .env
+      chat:
+        options:
+          model: deepseek/deepseek-v4-flash-0731   # генерация ответа
+          temperature: 0.1                  # мало «фантазии» — больше точности
+      embedding:
+        api-key: ${AI_EMBEDDING_API_KEY:}  # отдельный ключ для эмбеддингов; если пусто — общий api-key
+        options:
+          model: bge-m3-rus1               # эмбеддинги
+
+    vectorstore:
+      pgvector:
+        initialize-schema: true          # Spring AI сам создаст таблицу vector_store и HNSW-индекс
+        dimensions: 1024                  # размерность bge-m3; резерв на случай, если API недоступен, —
+                                          # рабочую приложение уточняет запросом к модели (EmbeddingReindexer)
+        distance-type: COSINE_DISTANCE
+        index-type: HNSW
+        table-name: vector_store
+        schema-name: public
+
+app:
+  auth:
+    # Basic-аутентификация всех запросов (API и демо-страница)
+    username: ${APP_AUTH_USERNAME:admin}   # логин входа
+    password: ${APP_AUTH_PASSWORD:}        # пароль: env APP_AUTH_PASSWORD или строка APP_AUTH_PASSWORD=... в .env;
+                                           # без него приложение не стартует
+  rag:
+    splitter: semantic                   # semantic — по абзацам/предложениям; token — прежний TokenTextSplitter
+    chunking:
+      max-tokens: 600                    # целевой размер чанка в токенах (CL100K)
+      min-tokens: 120                    # с этого размера чанк закрывается на границе абзаца
+      overlap-sentences: 1               # предложений переносится в следующий чанк
+      min-chunk-chars: 30                # куски короче отбрасываются
+    top-k: 10                            # сколько чанков подтягиваем в контекст (запас от «заглушения» лексически похожими чанками)
+    similarity-threshold: 0.35           # порог для bge-m3 на рус. вопросах: релевантные пары дают 0.4-0.7
+
+logging:
+  level:
+    org.springframework.ai: INFO

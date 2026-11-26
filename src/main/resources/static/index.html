@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ИИ-агент по корпоративным документам</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            margin: 0; background: #f4f6f9; color: #24292f;
+            height: 100vh; display: flex; flex-direction: column;
+        }
+        header {
+            background: #1f6feb; color: #fff; padding: 14px 24px;
+            display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+        }
+        header h1 { font-size: 18px; margin: 0; }
+        header small { opacity: .85; margin-left: 12px; }
+        header button {
+            background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.4);
+            border-radius: 8px; padding: 8px 16px; font: inherit; cursor: pointer;
+        }
+        header button:hover { background: rgba(255,255,255,.28); }
+        header select {
+            padding: 8px 10px; border-radius: 8px; border: none; font: inherit;
+            max-width: 260px; background: #fff;
+        }
+        main { flex: 1; display: flex; flex-direction: column; max-width: 900px; width: 100%; margin: 0 auto; padding: 14px 16px; overflow: hidden; }
+        details {
+            background: #fff; border: 1px solid #d0d7de; border-radius: 10px;
+            padding: 10px 16px; margin-bottom: 12px; flex-shrink: 0;
+        }
+        summary { cursor: pointer; font-weight: 600; color: #1f6feb; }
+        .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+        .row input[type=text], select {
+            padding: 8px; border: 1px solid #d0d7de; border-radius: 6px; font: inherit;
+        }
+        select { padding: 8px; }
+        button.primary {
+            background: #1f6feb; color: #fff; border: none; border-radius: 8px;
+            padding: 8px 20px; font: inherit; cursor: pointer;
+        }
+        button.primary:hover { background: #1a5ad6; }
+        button.primary:disabled { background: #9db8e8; cursor: wait; }
+        button.danger {
+            background: #cf222e; color: #fff; border: none; border-radius: 6px;
+            padding: 4px 12px; font-size: 13px; cursor: pointer;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eaeef2; }
+        th { background: #f6f8fa; }
+        .muted { color: #57606a; font-size: 13px; }
+
+        .chat-card {
+            flex: 1; display: flex; flex-direction: column; min-height: 0;
+            background: #fff; border: 1px solid #d0d7de; border-radius: 10px; overflow: hidden;
+        }
+        #chat { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+        .msg { max-width: 78%; padding: 10px 14px; border-radius: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+        .msg.user { align-self: flex-end; background: #1f6feb; color: #fff; border-bottom-right-radius: 4px; }
+        .msg.bot { align-self: flex-start; background: #f6f8fa; border: 1px solid #e4e8ec; border-bottom-left-radius: 4px; }
+        .msg.bot.notfound { border-left: 4px solid #cf222e; }
+        .msg .src { margin-top: 8px; font-size: 12px; }
+        .badge {
+            display: inline-block; background: #ddf4ff; color: #0a3069;
+            border-radius: 12px; padding: 2px 10px; font-size: 12px; margin: 2px 2px 0 0;
+        }
+        .meta { font-size: 11px; opacity: .65; margin-top: 4px; }
+        .typing { align-self: flex-start; background: #f6f8fa; border: 1px solid #e4e8ec; border-radius: 12px; padding: 12px 16px; display: none; }
+        .typing span {
+            display: inline-block; width: 7px; height: 7px; margin-right: 4px;
+            background: #8ca6c0; border-radius: 50%; animation: bounce 1.2s infinite;
+        }
+        .typing span:nth-child(2) { animation-delay: .2s; }
+        .typing span:nth-child(3) { animation-delay: .4s; }
+        @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
+        .hint-chips { align-self: flex-start; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+        .chip {
+            background: #fff; border: 1px solid #1f6feb; color: #1f6feb;
+            border-radius: 14px; padding: 5px 12px; font-size: 13px; cursor: pointer;
+        }
+        .chip:hover { background: #ddf4ff; }
+
+        .input-row {
+            display: flex; gap: 10px; padding: 12px; border-top: 1px solid #e4e8ec;
+            background: #fbfcfd; flex-shrink: 0;
+        }
+        #input {
+            flex: 1; min-height: 44px; max-height: 120px; padding: 11px 14px; font: inherit;
+            border: 1px solid #d0d7de; border-radius: 10px; resize: none; outline: none;
+        }
+        #input:focus { border-color: #1f6feb; }
+        #sendBtn { align-self: flex-end; height: 44px; min-width: 110px; }
+    </style>
+</head>
+<body>
+<header>
+        <h1>ИИ-агент по корпоративным документам <small>Spring AI · pgvector · DeepSeek</small></h1>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <select id="kbSelect" onchange="switchKb(this.value)" title="Активная база знаний"></select>
+            <button onclick="createKb()" title="Создать базу знаний">+ База</button>
+            <button onclick="deleteKb()" title="Удалить текущую базу знаний">✕ База</button>
+            <button onclick="clearChat()">Новый чат</button>
+        </div>
+</header>
+<main>
+    <details>
+        <summary>Документы в базе знаний</summary>
+        <div class="row">
+            <input type="file" id="file" accept=".pdf,.docx,.doc,.txt,.md,.rtf,.html">
+            <input type="text" id="title" placeholder="Название (необязательно)" size="26">
+            <select id="docType">
+                <option>регламент</option><option>приказ</option><option>инструкция</option>
+                <option>договор</option><option>политика</option><option>документ</option>
+            </select>
+            <button class="primary" onclick="upload()" id="upBtn">Загрузить</button>
+        </div>
+        <div class="row">
+            <input type="text" id="url" placeholder="или URL страницы / PDF / DOCX (https://...)" style="flex:1">
+            <button class="primary" onclick="uploadUrl()" id="urlBtn">Загрузить из URL</button>
+        </div>
+        <p class="muted">PDF, DOCX, TXT, MD, RTF, HTML. Повторная загрузка файла с тем же именем заменяет старую версию.</p>
+        <table id="docTable">
+            <thead><tr><th>Файл</th><th>Название</th><th>Тип</th><th>Чанков</th><th>Загружен</th><th></th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </details>
+
+    <div class="chat-card">
+        <div id="chat"></div>
+        <div class="typing" id="typing"><span></span><span></span><span></span></div>
+        <div class="input-row">
+            <textarea id="input" placeholder="Введите вопрос... (Enter — отправить, Shift+Enter — новая строка)"></textarea>
+            <button class="primary" id="sendBtn" onclick="send()">Отправить</button>
+        </div>
+    </div>
+</main>
+
+<script>
+    const $ = id => document.getElementById(id);
+    let sessionId = localStorage.getItem('ragSessionId');
+    if (!sessionId) {
+        sessionId = crypto.randomUUID();
+        localStorage.setItem('ragSessionId', sessionId);
+    }
+    let kbId = localStorage.getItem('ragKbId') || 'default';
+
+    function esc(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c =>
+            ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
+
+    function addMsg(role, text, sources, extra) {
+        const div = document.createElement('div');
+        div.className = 'msg ' + (role === 'user' ? 'user' : 'bot' + (extra && extra.found === false ? ' notfound' : ''));
+        let html = esc(text);
+        if (sources && sources.length) {
+            html += '<div class="src">Источники: ' + sources.map(s =>
+                `<span class="badge">${esc(s.title || s.file)}${s.similarity != null ? ' · ' + Math.round(s.similarity * 100) + '%' : ''}</span>`
+            ).join('') + '</div>';
+        }
+        if (extra && extra.elapsed != null) {
+            html += `<div class="meta">⏱ ${extra.elapsed} c</div>`;
+        }
+        div.innerHTML = html;
+        $('chat').appendChild(div);
+        $('chat').scrollTop = $('chat').scrollHeight;
+        return div;
+    }
+
+    function showHintChips() {
+        const wrap = document.createElement('div');
+        wrap.className = 'hint-chips';
+        wrap.innerHTML = [
+            'Кто подписывает агентский договор?',
+            'Кто отвечает за этап переноса данных в CRM?',
+            'Какой документ действует по согласованию платежей?'
+        ].map(q => `<button class="chip" onclick="useHint(this)">${esc(q)}</button>`).join('');
+        $('chat').appendChild(wrap);
+    }
+
+    function useHint(chip) {
+        $('input').value = chip.textContent;
+        send();
+    }
+
+    async function send() {
+        const q = $('input').value.trim();
+        if (!q) return;
+        $('input').value = '';
+        addMsg('user', q);
+        $('sendBtn').disabled = true;
+        $('typing').style.display = 'block';
+        const started = Date.now();
+        try {
+            const r = await fetch('/api/ask', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({question: q, sessionId: sessionId, kbId: kbId})
+            });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const data = await r.json();
+            $('typing').style.display = 'none';
+            addMsg('bot', data.answer, data.sources, {found: data.found, elapsed: Math.round((Date.now() - started) / 1000)});
+        } catch (e) {
+            $('typing').style.display = 'none';
+            addMsg('bot', 'Ошибка запроса: ' + e.message, null, {found: false});
+        } finally {
+            $('sendBtn').disabled = false;
+            $('input').focus();
+        }
+    }
+
+    async function clearChat() {
+        await fetch('/api/chat?sessionId=' + encodeURIComponent(sessionId) + '&kbId=' + encodeURIComponent(kbId), {method: 'DELETE'});
+        $('chat').innerHTML = '';
+        addMsg('bot', 'Начинаем новый диалог. Я найду ответ в корпоративных документах компании. Спросите, например:');
+        showHintChips();
+        $('input').focus();
+    }
+
+    async function upload() {
+        const f = $('file').files[0];
+        if (!f) return alert('Выберите файл');
+        const btn = $('upBtn');
+        btn.disabled = true; btn.textContent = 'Загружаю...';
+        const fd = new FormData();
+        fd.append('file', f);
+        fd.append('docType', $('docType').value);
+        fd.append('kbId', kbId);
+        if ($('title').value.trim()) fd.append('title', $('title').value.trim());
+        try {
+            const r = await fetch('/api/documents', {method: 'POST', body: fd});
+            if (!r.ok) throw new Error(await r.text());
+            const d = await r.json();
+            alert(`Загружено: ${d.fileName}, чанков: ${d.chunkCount}`);
+            await loadDocs();
+        } catch (e) {
+            alert('Ошибка загрузки: ' + e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Загрузить';
+        }
+    }
+
+    async function uploadUrl() {
+        const u = $('url').value.trim();
+        if (!u) return alert('Введите URL');
+        const btn = $('urlBtn');
+        btn.disabled = true; btn.textContent = 'Загружаю...';
+        try {
+            const r = await fetch('/api/documents/web', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: u, docType: $('docType').value, title: $('title').value.trim() || null, kbId: kbId})
+            });
+            if (!r.ok) throw new Error(await r.text());
+            const d = await r.json();
+            alert(`Загружено: ${d.fileName}, чанков: ${d.chunkCount}`);
+            await loadDocs();
+        } catch (e) {
+            alert('Ошибка загрузки: ' + e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Загрузить из URL';
+        }
+    }
+
+    async function del(fileName) {
+        if (!confirm('Удалить документ "' + fileName + '" из базы знаний?')) return;
+        await fetch('/api/documents?file=' + encodeURIComponent(fileName) + '&kbId=' + encodeURIComponent(kbId), {method: 'DELETE'});
+        await loadDocs();
+    }
+
+    async function loadKbs() {
+        const r = await fetch('/api/kb');
+        const kbs = await r.json();
+        const sel = $('kbSelect');
+        sel.innerHTML = kbs.map(k =>
+            `<option value="${esc(k.kbId)}">${esc(k.title)}${k.kbId === 'default' ? ' ★' : ''}</option>`).join('');
+        if (![...sel.options].some(o => o.value === kbId)) kbId = 'default';
+        sel.value = kbId;
+        localStorage.setItem('ragKbId', kbId);
+    }
+
+    function switchKb(v) {
+        kbId = v;
+        localStorage.setItem('ragKbId', v);
+        $('chat').innerHTML = '';
+        const name = $('kbSelect').selectedOptions[0].text.replace(' ★', '');
+        addMsg('bot', `Переключено на базу знаний «${esc(name)}». Поиск теперь идёт только по её документам — она изолирована от других баз.`);
+        loadDocs();
+        $('input').focus();
+    }
+
+    async function createKb() {
+        const title = prompt('Название новой базы знаний:');
+        if (!title || !title.trim()) return;
+        const r = await fetch('/api/kb', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title: title.trim()})
+        });
+        if (!r.ok) return alert('Ошибка создания: ' + await r.text());
+        const kb = await r.json();
+        kbId = kb.kbId;
+        localStorage.setItem('ragKbId', kbId);
+        await loadKbs();
+        $('chat').innerHTML = '';
+        addMsg('bot', `Создана база знаний «${esc(kb.title)}». Загрузите в неё документы — она полностью изолирована от других баз.`);
+        await loadDocs();
+        $('input').focus();
+    }
+
+    async function deleteKb() {
+        if (kbId === 'default') return alert('Основную базу знаний удалить нельзя');
+        const name = $('kbSelect').selectedOptions[0].text.replace(' ★', '');
+        if (!confirm(`Удалить базу знаний «${name}» вместе со всеми её документами?`)) return;
+        const r = await fetch('/api/kb?kbId=' + encodeURIComponent(kbId), {method: 'DELETE'});
+        if (!r.ok) return alert('Ошибка удаления: ' + await r.text());
+        kbId = 'default';
+        localStorage.setItem('ragKbId', kbId);
+        await loadKbs();
+        $('chat').innerHTML = '';
+        addMsg('bot', 'База знаний удалена. Возвращаемся к основной базе.');
+        await loadDocs();
+    }
+
+    async function loadDocs() {
+        const r = await fetch('/api/documents?kbId=' + encodeURIComponent(kbId));
+        const docs = await r.json();
+        const tb = $('docTable').querySelector('tbody');
+        tb.innerHTML = docs.map(d => `<tr>
+            <td>${esc(d.file_name)}</td><td>${esc(d.title || '')}</td>
+            <td><span class="badge">${esc(d.doc_type)}</span></td><td>${d.chunk_count}</td>
+            <td>${new Date(d.loaded_at).toLocaleString('ru-RU')}</td>
+            <td><button class="danger" onclick="del('${esc(d.file_name)}')">Удалить</button></td>
+        </tr>`).join('');
+    }
+
+    $('input').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+
+    (async () => {
+        await loadKbs();
+        addMsg('bot', 'Здравствуйте! Я помогу найти ответ в корпоративных документах компании: регламентах, приказах и инструкциях. База знаний выбрана в шапке — переключайтесь между ними, они изолированы. Спросите, например:');
+        showHintChips();
+        await loadDocs();
+    })();
+    $('input').focus();
+</script>
+</body>
+</html>

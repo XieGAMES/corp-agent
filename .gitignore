@@ -1,0 +1,13 @@
+target/
+*.log
+.idea/
+*.iml
+.vscode/
+.mvn/wrapper/maven-wrapper.jar
+.env
+
+# Служебные файлы редактора и агентов, кэш Python, пустой scratch-файл HTTP-клиента
+.zcode/
+__pycache__/
+*.pyc
+api.http
