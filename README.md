@@ -149,37 +149,84 @@ python tools\quality_requests.py answer 12 answer.txt
 
 ## Запуск в Docker
 
+Та же инструкция отдельным файлом: [DOCKER.md](DOCKER.md).
+
 Приложение и PostgreSQL 17 с расширением pgvector поднимаются одной командой.
-Нужен Docker с плагином Compose; JDK, Maven и локальный PostgreSQL не требуются.
+Нужен только Docker с плагином Compose (в Docker Desktop он есть, команда
+пишется через пробел: `docker compose`); JDK, Maven и локальный PostgreSQL
+не требуются.
 
-```bat
-cd rag-agent
-docker compose up --build
-```
+### Быстрый старт
 
-Первый запуск дольше остальных: собирается образ приложения (Maven скачивает
-зависимости). Остановить — `Ctrl+C` или `docker compose down`.
+1. Запустите Docker Desktop. Проверка: `docker compose version` выводит версию.
+
+2. В корне репозитория, рядом с `docker-compose.yml`, должен лежать файл `.env`
+   минимум с тремя строками (без кавычек):
+
+   ```dotenv
+   AI_API_KEY=...
+   APP_AUTH_PASSWORD=...
+   APP_QUALITY_PASSWORD=...
+   ```
+
+3. Запустите из корня репозитория:
+
+   ```bat
+   docker compose up --build
+   ```
+
+4. Дождитесь в журнале строки `Started RagAgentApplication` и откройте
+   http://localhost:8090/ — браузер спросит логин и пароль.
+
+Первый запуск дольше остальных: скачиваются образы, а образ приложения
+собирается Maven’ом (он качает зависимости). Сначала поднимается база и проходит
+проверку готовности (`healthcheck`), только затем стартует приложение.
+Остановить — `Ctrl+C`.
 
 | Сервис | Образ | Адрес |
 |---|---|---|
 | `app` | собирается из `Dockerfile` (сборка на Maven + JDK 21, запуск на JRE 21) | http://localhost:8090/ |
 | `db` | `pgvector/pgvector:pg17` | `localhost:5433`, база `rag_docs` — только с этой машины |
 
+### Как это устроено
+
 - База создаётся при первом запуске на пустом томе `pg-rag-data`; расширение
-  `vector` включает скрипт `docker/postgres/init/01-pgvector.sql`.
-  Приложение стартует только после готовности базы (`healthcheck`).
+  `vector` включает скрипт `docker/postgres/init/01-pgvector.sql` — один раз,
+  при создании тома. Таблицы приложение создаёт само при каждом старте.
+  Новая база пуста: документы загружаются через страницу чата.
 - Данные хранятся в томе: `docker compose down` их сохраняет,
-  `docker compose down -v` удаляет вместе с базой.
-- Порты `8090` и `5433` совпадают с локальной установкой. Перед запуском
-  остановите локальное приложение и службу `pg-rag` (`net stop pg-rag`),
-  иначе контейнеры не смогут занять порты.
-- Токен API берётся из `.env` (`AI_API_KEY=...`). Без него контейнер `app`
-  не запускается — в его журнале `OpenAI API key must be set`. Так же не
-  запустится контейнер без `APP_AUTH_PASSWORD` (пароль пользователя) и без
-  `APP_QUALITY_PASSWORD` (пароль службы качества).
+  `docker compose down -v` удаляет вместе со всеми базами знаний.
+- По умолчанию порты `8090` и `5433` совпадают с локальной установкой.
+  Перед запуском остановите локальное приложение и службу `pg-rag`
+  (`net stop pg-rag`) — либо задайте другие порты в `.env` (`APP_PORT`, `DB_PORT`).
+- Compose берёт имя проекта из имени папки. Папка раньше называлась `rag-agent`,
+  и в Docker могли остаться контейнеры и том того проекта с базой знаний. Чтобы
+  пользоваться ими, задайте в `.env` строку `COMPOSE_PROJECT_NAME=rag-agent` —
+  иначе создастся второй проект с пустой базой и не сможет занять порт базы.
+- Приложение не стартует без ключа и без любого из двух паролей; контейнер `app`
+  тогда перезапускается снова и снова, а причина видна в журнале:
+  `docker compose logs app`.
+
+### Ежедневные команды
+
+```bat
+docker compose up -d --build     :: запустить в фоне; она же пересобирает образ после изменения кода
+docker compose ps                :: состояние контейнеров
+docker compose logs -f app       :: журнал приложения (выйти — Ctrl+C)
+docker compose stop              :: остановить; контейнеры и данные остаются
+docker compose start             :: запустить остановленное снова
+docker compose down              :: остановить и убрать контейнеры; база остаётся в томе
+docker compose down -v           :: то же вместе с томом базы — все документы удаляются
+```
+
+После изменения `.env` выполните `docker compose up -d`: контейнеры пересоздадутся
+с новыми значениями.
+
+### Переменные `.env`
 
 Значения задаются в файле `.env` рядом с `docker-compose.yml`
-(`AI_API_KEY` обязателен, остальные необязательны):
+(обязательны `AI_API_KEY`, `APP_AUTH_PASSWORD` и `APP_QUALITY_PASSWORD`,
+остальные необязательны):
 
 | Переменная | По умолчанию | Что задаёт |
 |---|---|---|
@@ -205,16 +252,25 @@ DB_PORT=5434
 Чтобы изменить их для существующей базы, выполните `docker compose down -v`
 (данные базы будут удалены).
 
+### Если что-то не запускается
+
+| Симптом | Что делать |
+|---|---|
+| `failed to connect to the Docker API` | Docker Desktop не запущен — запустите его и повторите команду |
+| Ошибка про занятый порт (`port is already allocated`) | Порт занят локальной установкой: остановите локальное приложение и службу `pg-rag` (`net stop pg-rag`) или задайте другие `APP_PORT` / `DB_PORT` в `.env` |
+| Порт базы занят, а локальная установка остановлена; в `docker ps` есть контейнеры `rag-agent-db-1`, `rag-agent-app-1` | Прежняя копия стека под старым именем проекта: добавьте в `.env` строку `COMPOSE_PROJECT_NAME=rag-agent` и повторите запуск |
+| Контейнер `app` перезапускается снова и снова | В `.env` нет ключа или одного из паролей — смотрите `docker compose logs app` |
+| Страница не открывается, хотя контейнеры работают | Приложение ещё стартует — ждите `Started RagAgentApplication` в журнале; если порт меняли, открывайте `http://localhost:<APP_PORT>/` |
+
 ### Перенос данных из локальной базы
 
 База в контейнере изначально пуста. Чтобы перенести в неё базы знаний из
-службы `pg-rag` (командная строка Windows):
+службы `pg-rag` (командная строка Windows, из корня репозитория):
 
 ```bat
-cd rag-agent
 set PGPASSWORD=postgres
 "%ProgramFiles%\PostgreSQL\17\bin\pg_dump.exe" -h localhost -p 5433 -U postgres -Fc -f "%TEMP%\rag_docs.dump" rag_docs
-net stop pg-rag
+net stop pg-rag                   :: только если DB_PORT=5433 (по умолчанию): порт занят этой службой
 docker compose up -d db
 docker compose cp "%TEMP%\rag_docs.dump" db:/tmp/rag_docs.dump
 docker compose exec -T db pg_restore -U postgres -d rag_docs --clean --if-exists --no-owner /tmp/rag_docs.dump

@@ -1,0 +1,63 @@
+# RAG-агент + PostgreSQL 17 с расширением pgvector.
+#
+#   docker compose up --build     # собрать образ приложения и запустить оба сервиса
+#   docker compose down           # остановить (данные базы остаются в томе pg-rag-data)
+#   docker compose down -v        # остановить и удалить данные базы
+#
+# Значения ${...} можно переопределить в файле .env рядом с этим файлом (см. README, «Запуск в Docker»).
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-rag_docs}
+    ports:
+      # Порт машины как у службы pg-rag; база доступна только с этой машины (127.0.0.1)
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    volumes:
+      - pg-rag-data:/var/lib/postgresql/data
+      # Скрипты из этой папки выполняются один раз — при первом старте на пустом томе
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  app:
+    build: .
+    image: rag-agent:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8090}:8090"
+    environment:
+      # Настройки БД приходят переменными окружения и перекрывают application.yml;
+      # внутри сети compose база доступна по имени сервиса db через её внутренний порт 5432
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-rag_docs}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-postgres}
+      # Токен OpenAI-совместимого API — строка AI_API_KEY=... в файле .env;
+      # без токена приложение не запустится (об этом будет написано в его журнале)
+      SPRING_AI_OPENAI_API_KEY: ${AI_API_KEY:-}
+      # Отдельный ключ для эмбеддингов (AI_EMBEDDING_API_KEY в .env); если пусто — используется общий
+      SPRING_AI_OPENAI_EMBEDDING_API_KEY: ${AI_EMBEDDING_API_KEY:-}
+      # Логин и пароль Basic-аутентификации (APP_AUTH_USERNAME / APP_AUTH_PASSWORD в .env);
+      # без пароля приложение не запустится
+      APP_AUTH_USERNAME: ${APP_AUTH_USERNAME:-employee}
+      APP_AUTH_PASSWORD: ${APP_AUTH_PASSWORD:-}
+      # Учётная запись службы качества (роль QUALITY — страница заявок /quality.html);
+      # без пароля приложение не запустится
+      APP_QUALITY_USERNAME: ${APP_QUALITY_USERNAME:-quality}
+      APP_QUALITY_PASSWORD: ${APP_QUALITY_PASSWORD:-}
+      # Необязательный контакт службы качества — попадает в ответ «обратитесь …»
+      QUALITY_SERVICE_CONTACT: ${QUALITY_SERVICE_CONTACT:-}
+
+volumes:
+  pg-rag-data:
