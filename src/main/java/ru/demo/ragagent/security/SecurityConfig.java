@@ -77,7 +77,7 @@ public class SecurityConfig {
      */
     @Bean
     public UserDetailsService userDetailsService(
-            @Value("${app.auth.username:admin}") String username,
+            @Value("${app.auth.username:employee}") String username,
             @Value("${app.auth.password:}") String password,
             @Value("${app.auth.quality-username:quality}") String qualityUsername,
             @Value("${app.auth.quality-password:}") String qualityPassword) {

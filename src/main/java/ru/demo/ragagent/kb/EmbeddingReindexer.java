@@ -34,7 +34,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * переиндексировать одну базу параллельно.
  */
 @Component
-public class EmbeddingReindexer {
+public class    EmbeddingReindexer {
 
     /** Текстов за один запрос к API эмбеддингов. */
     private static final int EMBED_BATCH_SIZE = 16;

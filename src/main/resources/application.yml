@@ -47,7 +47,7 @@ app:
   auth:
     # Basic-аутентификация всех запросов (API и страницы). Учётные записи две:
     # пользователь (роль USER — чат с агентом) и служба качества (роль QUALITY — страница заявок).
-    username: ${APP_AUTH_USERNAME:admin}               # логин пользователя
+    username: ${APP_AUTH_USERNAME:employee}          # логин пользователя
     password: ${APP_AUTH_PASSWORD:}                    # пароль: env APP_AUTH_PASSWORD или строка APP_AUTH_PASSWORD=... в .env;
                                                        # без него приложение не стартует
     quality-username: ${APP_QUALITY_USERNAME:quality}  # логин службы качества

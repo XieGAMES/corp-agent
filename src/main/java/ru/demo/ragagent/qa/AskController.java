@@ -3,6 +3,9 @@ package ru.demo.ragagent.qa;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,8 +19,7 @@ import ru.demo.ragagent.quality.QualityRequestService;
 /**
  * Чат с агентом и заявки, созданные в нём. Правила доступа заданы в SecurityConfig:
  * заявки своей сессии видит любой пользователь, консоль службы качества — только её роль.
- */
-@RestController
+ */@RestController
 @RequestMapping("/api")
 public class AskController {
 
@@ -30,6 +32,17 @@ public class AskController {
     }
 
     public record AskRequest(String question, String sessionId, String kbId) {
+    }
+
+    /** Кто вошёл и его роли («ROLE_…»). */
+    public record Me(String username, List<String> roles) {
+    }
+
+    /** GET /api/me — учётная запись вошедшего: страница чата по ней решает, показывать ли консоль службы качества. */
+    @GetMapping("/me")
+    public Me me(@AuthenticationPrincipal UserDetails user) {
+        return new Me(user.getUsername(),
+                user.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList());
     }
 
     /**

@@ -55,6 +55,7 @@
         .hbtn:hover, .hlink:hover { background: rgba(42,39,34,.06); border-color: var(--line-strong); }
         .hbtn:active { transform: translateY(1px); }
         .hbtn[hidden] { display: none; }
+        .hlink[hidden] { display: none; }
         .hbtn:focus-visible, .hlink:focus-visible { outline: 2px solid var(--ink-soft); outline-offset: 2px; }
         .hbtn.primary { background: var(--accent); color: var(--paper-on-ink); border-color: var(--accent); font-weight: 600; }
         .hbtn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
@@ -225,7 +226,8 @@
                 title="Уведомления: ответы службы качества на ваши заявки" aria-label="Уведомления">
             <svg class="i" aria-hidden="true"><use href="#i-bell"/></svg><span class="count" id="bellCount" hidden></span></button>
         <span class="hsep" aria-hidden="true"></span>
-        <a class="hlink" href="/quality.html" title="Нужна учётная запись службы качества">
+        <!-- консоль службы качества: по умолчанию скрыта, показывается только роли QUALITY (см. /api/me) -->
+        <a class="hlink" id="qualityLink" href="/quality.html" title="Заявки, на которые агент не нашёл ответ" hidden>
             <svg class="i" aria-hidden="true"><use href="#i-list"/></svg><span>Заявки службы качества</span></a>
         <a class="hlink" href="/logout" title="Браузер спросит логин и пароль заново">
             <svg class="i" aria-hidden="true"><use href="#i-swap"/></svg><span>Сменить пользователя</span></a>
@@ -583,6 +585,11 @@
     });
 
     (async () => {
+        // ссылка на консоль службы качества — только её роли; при любой ошибке остаётся скрытой
+        try {
+            const me = await (await fetch('/api/me')).json();
+            if ((me.roles || []).includes('ROLE_QUALITY')) $('qualityLink').hidden = false;
+        } catch (e) { /* без ответа сервера ссылку не показываем */ }
         await loadKbs();
         // Сюда возвращается браузер обычного пользователя, открывшего страницу заявок (SecurityConfig)
         if (new URLSearchParams(location.search).get('forbidden') === 'quality') {
